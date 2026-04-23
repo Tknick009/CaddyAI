@@ -56,3 +56,62 @@ async def test_generate_report_without_openai_key_falls_back(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     report = await coach_svc.generate_report(_metrics())
     assert report.source == "mock"
+
+
+def test_mock_coach_flags_positive_iron_attack_angle():
+    report = coach_svc._mock_report(_metrics(attack_angle_deg=2.5, club_kind=ClubKind.iron))
+    assert any("attack angle" in c.lower() for c in report.root_causes)
+    assert any("ball-first" in d.name.lower() for d in report.drills)
+
+
+def test_mock_coach_flags_steep_iron_attack_angle():
+    report = coach_svc._mock_report(_metrics(attack_angle_deg=-9.0, club_kind=ClubKind.iron))
+    assert any("too steep" in c.lower() for c in report.root_causes)
+
+
+def test_mock_coach_flags_driver_hitting_down():
+    report = coach_svc._mock_report(_metrics(attack_angle_deg=-2.5, club_kind=ClubKind.driver))
+    assert any("hitting down" in c.lower() for c in report.root_causes)
+
+
+def test_mock_coach_does_not_diagnose_attack_angle_when_club_kind_is_unknown():
+    # Regression: None != "driver" is True in Python, so the non-driver
+    # branch used to fire on unknown clubs and incorrectly shout
+    # "hitting up on an iron" at, e.g., a driver swing the client didn't
+    # tag with a club_kind. Unknown club → no attack-angle verdict.
+    report = coach_svc._mock_report(_metrics(attack_angle_deg=3.0, club_kind=None))
+    assert not any("hitting up" in c.lower() for c in report.root_causes)
+    assert not any("too steep" in c.lower() for c in report.root_causes)
+
+
+def test_mock_coach_labels_wedge_and_hybrid_correctly():
+    wedge = coach_svc._mock_report(_metrics(attack_angle_deg=3.0, club_kind=ClubKind.wedge))
+    assert any("hitting up on a wedge" in c.lower() for c in wedge.root_causes)
+    hybrid = coach_svc._mock_report(_metrics(attack_angle_deg=3.0, club_kind=ClubKind.hybrid))
+    assert any("hitting up on a hybrid" in c.lower() for c in hybrid.root_causes)
+
+
+def test_mock_coach_flags_bad_sequencing():
+    report = coach_svc._mock_report(_metrics(sequencing_index=0.3))
+    assert any("sequence" in c.lower() for c in report.root_causes)
+    assert any("step-through" in d.name.lower() for d in report.drills)
+
+
+def test_mock_coach_flags_excessive_pelvis_slide():
+    report = coach_svc._mock_report(_metrics(pelvis_slide_cm=12.0))
+    assert any("slide" in c.lower() for c in report.root_causes)
+
+
+def test_3d_viewpoint_metrics_round_trip():
+    m = _metrics(
+        viewpoint="pose3d",
+        attack_angle_deg=-4.2,
+        pelvis_slide_cm=3.0,
+        pelvis_tilt_deg=7.0,
+        sequencing_index=0.85,
+    )
+    dumped = m.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["viewpoint"] == "pose3d"
+    assert dumped["attack_angle_deg"] == -4.2
+    assert "pelvis_slide_cm" in dumped
+    assert dumped["sequencing_index"] == 0.85

@@ -141,6 +141,25 @@ public enum Handedness: String, Codable, Sendable {
     case right, left
 }
 
+/// Where the metrics came from. Some measurements are only honest from
+/// certain camera angles (e.g. swing plane from DTL, hip turn from FO),
+/// so downstream consumers — including the coach — can weight the
+/// numbers based on the viewpoint they were captured from.
+public enum SwingViewpoint: String, Codable, Sendable {
+    /// Face-on (golfer faces the camera). Good for hip/shoulder turn,
+    /// sway, weight transfer, lateral head movement.
+    case faceOn = "face_on"
+    /// Down-the-line (camera behind trail shoulder). Good for swing
+    /// plane, attack angle, early extension.
+    case downTheLine = "down_the_line"
+    /// Output of `MultiAngleSwingAnalyzer.fuse(...)` — each metric was
+    /// sourced from whichever viewpoint measures it most honestly.
+    case fused = "fused"
+    /// 3D joints (iOS 17+ `VNDetectHumanBodyPose3DRequest` or a similar
+    /// depth-aware estimator). These metrics are honest from any angle.
+    case pose3D = "pose3d"
+}
+
 public struct SwingMetrics: Codable, Hashable, Sendable {
     public var tempoRatio: Double
     public var backswingSec: Double
@@ -157,6 +176,24 @@ public struct SwingMetrics: Codable, Hashable, Sendable {
     public var handedness: Handedness
     public var clubKind: ClubKind?
 
+    // 3D-only (optional). Populated by `SwingAnalyzer3D` or by fusing
+    // DTL + face-on 2D captures. Old clients that only speak the 2D
+    // schema simply ignore these.
+    public var viewpoint: SwingViewpoint?
+    /// Club-head descent angle at impact (°), negative = hitting down.
+    /// Requires 3D pose or club-head tracking to be honest.
+    public var attackAngleDeg: Double?
+    /// Lateral pelvis translation from address to top (cm), real units.
+    public var pelvisSlideCm: Double?
+    /// Pelvis side-bend at impact (°), positive = trail-side down.
+    public var pelvisTiltDeg: Double?
+    /// Kinematic sequence quality: 0..1 where 1 = pelvis→torso→arm→hand
+    /// peak rotational velocities fire in order with reasonable spacing.
+    public var sequencingIndex: Double?
+    /// Club path at impact (°), requires club-head tracking. Not
+    /// populated in this release — scaffolding only.
+    public var clubPathDeg: Double?
+
     public init(
         tempoRatio: Double,
         backswingSec: Double,
@@ -171,7 +208,13 @@ public struct SwingMetrics: Codable, Hashable, Sendable {
         weightTransferPct: Double,
         confidence: Double,
         handedness: Handedness = .right,
-        clubKind: ClubKind? = nil
+        clubKind: ClubKind? = nil,
+        viewpoint: SwingViewpoint? = nil,
+        attackAngleDeg: Double? = nil,
+        pelvisSlideCm: Double? = nil,
+        pelvisTiltDeg: Double? = nil,
+        sequencingIndex: Double? = nil,
+        clubPathDeg: Double? = nil
     ) {
         self.tempoRatio = tempoRatio
         self.backswingSec = backswingSec
@@ -187,6 +230,12 @@ public struct SwingMetrics: Codable, Hashable, Sendable {
         self.confidence = confidence
         self.handedness = handedness
         self.clubKind = clubKind
+        self.viewpoint = viewpoint
+        self.attackAngleDeg = attackAngleDeg
+        self.pelvisSlideCm = pelvisSlideCm
+        self.pelvisTiltDeg = pelvisTiltDeg
+        self.sequencingIndex = sequencingIndex
+        self.clubPathDeg = clubPathDeg
     }
 }
 

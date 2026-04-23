@@ -40,6 +40,9 @@ struct SwingReviewView: View {
                 }
                 if let m = state.lastSwingMetrics {
                     sectionCard(title: "Metrics") {
+                        if let vp = m.viewpoint {
+                            MetricRow("Source", value: sourceLabel(for: vp))
+                        }
                         MetricRow("Tempo", value: String(format: "%.2f:1", m.tempoRatio))
                         MetricRow("Backswing", value: String(format: "%.2fs", m.backswingSec))
                         MetricRow("Downswing", value: String(format: "%.2fs", m.downswingSec))
@@ -50,6 +53,18 @@ struct SwingReviewView: View {
                         MetricRow("Head movement", value: String(format: "%.1f cm", m.headMovementCm))
                         MetricRow("Swing plane", value: String(format: "%.0f°", m.swingPlaneDeg))
                         MetricRow("Weight on lead foot", value: String(format: "%.0f%%", m.weightTransferPct))
+                        if let aa = m.attackAngleDeg {
+                            MetricRow("Attack angle", value: String(format: "%+.1f°", aa))
+                        }
+                        if let ps = m.pelvisSlideCm {
+                            MetricRow("Pelvis slide", value: String(format: "%.1f cm", ps))
+                        }
+                        if let pt = m.pelvisTiltDeg {
+                            MetricRow("Pelvis tilt", value: String(format: "%+.1f°", pt))
+                        }
+                        if let seq = m.sequencingIndex {
+                            MetricRow("Sequencing", value: String(format: "%.0f%%", seq * 100))
+                        }
                         MetricRow("Confidence", value: String(format: "%.0f%%", m.confidence * 100))
                     }
                 }
@@ -68,6 +83,15 @@ struct SwingReviewView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(.thinMaterial))
+    }
+
+    private func sourceLabel(for vp: SwingViewpoint) -> String {
+        switch vp {
+        case .faceOn: return "Face-on (2D)"
+        case .downTheLine: return "Down-the-line (2D)"
+        case .fused: return "Face-on + DTL fused"
+        case .pose3D: return "3D pose"
+        }
     }
 
     private func sectionCard<Content: View>(title: String, @ViewBuilder _ content: () -> Content) -> some View {

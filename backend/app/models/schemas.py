@@ -86,6 +86,16 @@ class Round(_Model):
 # --- Swing analysis --------------------------------------------------------
 
 
+class SwingViewpoint(str, Enum):
+    """Camera source of a `SwingMetrics`. Different viewpoints are honest
+    about different measurements; the coach weights advice accordingly."""
+
+    face_on = "face_on"
+    down_the_line = "down_the_line"
+    fused = "fused"          # MultiAngleSwingAnalyzer output
+    pose3d = "pose3d"        # iOS 17+ VNDetectHumanBodyPose3DRequest
+
+
 class SwingMetrics(_Model):
     """Output of the on-device Vision pose pipeline."""
 
@@ -107,6 +117,31 @@ class SwingMetrics(_Model):
     confidence: float = Field(ge=0.0, le=1.0)
     handedness: Literal["right", "left"] = "right"
     club_kind: ClubKind | None = None
+
+    # 3D-only or multi-angle-fused fields. `None` on pure face-on captures.
+    viewpoint: SwingViewpoint | None = None
+    attack_angle_deg: float | None = Field(
+        default=None,
+        description="lead-wrist descent angle at impact (°); negative = hitting down",
+    )
+    pelvis_slide_cm: float | None = Field(
+        default=None,
+        description="horizontal pelvis translation from address to top (cm)",
+    )
+    pelvis_tilt_deg: float | None = Field(
+        default=None,
+        description="hip-line tilt at impact (°); positive = trail side down",
+    )
+    sequencing_index: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="how close to pelvis→torso→hand kinematic sequence; 1 = ideal",
+    )
+    club_path_deg: float | None = Field(
+        default=None,
+        description="club head path at impact (°); requires club-head tracking",
+    )
 
 
 class Drill(_Model):
