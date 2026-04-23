@@ -1,0 +1,160 @@
+"""Shared wire schemas. Must stay in sync with ios/CaddyAICore/Models.swift."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class _Model(BaseModel):
+    # Swift uses `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase`, so
+    # we deliberately keep snake_case on the wire.
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# --- Clubs & bag -----------------------------------------------------------
+
+
+class ClubKind(str, Enum):
+    driver = "driver"
+    wood = "wood"
+    hybrid = "hybrid"
+    iron = "iron"
+    wedge = "wedge"
+    putter = "putter"
+
+
+class Club(_Model):
+    id: str
+    kind: ClubKind
+    name: str
+    loft_deg: float | None = None
+
+
+class PersonalDistance(_Model):
+    club_id: str
+    typical_yards: float
+    stddev_yards: float = 0.0
+    sample_size: int = 0
+
+
+class Bag(_Model):
+    clubs: list[Club]
+    personal_distances: list[PersonalDistance] = Field(default_factory=list)
+
+
+# --- Shots & rounds --------------------------------------------------------
+
+
+class ShotSource(str, Enum):
+    manual = "manual"
+    garmin_watch = "garmin_watch"
+    launch_monitor_r10 = "launch_monitor_r10"
+    launch_monitor_mevo = "launch_monitor_mevo"
+    launch_monitor_skytrak = "launch_monitor_skytrak"
+    launch_monitor_rapsodo = "launch_monitor_rapsodo"
+
+
+class Shot(_Model):
+    id: str
+    club_id: str
+    distance_yards: float
+    carry_yards: float | None = None
+    ball_speed_mph: float | None = None
+    club_speed_mph: float | None = None
+    launch_angle_deg: float | None = None
+    spin_rpm: float | None = None
+    side_yards: float | None = None  # positive = right of target
+    result: Literal["fairway", "rough", "green", "bunker", "hazard", "ob", "unknown"] = (
+        "unknown"
+    )
+    ts: datetime
+    source: ShotSource = ShotSource.manual
+    note: str | None = None
+
+
+class Round(_Model):
+    id: str
+    course: str | None = None
+    date: datetime
+    shots: list[Shot] = Field(default_factory=list)
+
+
+# --- Swing analysis --------------------------------------------------------
+
+
+class SwingMetrics(_Model):
+    """Output of the on-device Vision pose pipeline."""
+
+    tempo_ratio: float = Field(
+        description="backswing duration / downswing duration; ~3.0 is ideal"
+    )
+    backswing_sec: float
+    downswing_sec: float
+    peak_shoulder_turn_deg: float
+    peak_hip_turn_deg: float
+    x_factor_deg: float = Field(description="shoulder_turn − hip_turn at top of swing")
+    lateral_sway_cm: float = Field(description="lead-hip lateral shift from address to top")
+    head_movement_cm: float
+    early_extension_cm: float = Field(description="pelvis forward push at impact vs address")
+    swing_plane_deg: float
+    weight_transfer_pct: float = Field(
+        description="percent of body weight on lead foot at impact, 0-100"
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+    handedness: Literal["right", "left"] = "right"
+    club_kind: ClubKind | None = None
+
+
+class Drill(_Model):
+    name: str
+    description: str
+
+
+class CoachingReport(_Model):
+    summary: str
+    likely_ball_flight: str = Field(
+        description="e.g. 'Weak slice' or 'Low pull-hook'"
+    )
+    root_causes: list[str]
+    drills: list[Drill]
+    # Non-empty only when we fell back to the deterministic mock coach.
+    source: Literal["openai", "mock"] = "openai"
+
+
+# --- On-course caddy -------------------------------------------------------
+
+
+class Lie(str, Enum):
+    tee = "tee"
+    fairway = "fairway"
+    rough = "rough"
+    deep_rough = "deep_rough"
+    bunker = "bunker"
+    recovery = "recovery"
+
+
+class ShotContext(_Model):
+    target_distance_yards: float
+    elevation_change_ft: float = 0.0
+    wind_speed_mph: float = 0.0
+    wind_direction_deg: float = 0.0  # 0 = pure headwind, 180 = pure tailwind
+    lie: Lie = Lie.fairway
+    pin_position: Literal["front", "middle", "back"] | None = None
+    shot_shape_preference: Literal["straight", "draw", "fade"] | None = None
+    avoid_left: bool = False
+    avoid_right: bool = False
+    must_carry_yards: float | None = None
+
+
+class CaddyRecommendation(_Model):
+    primary_club_id: str
+    alt_club_id: str | None = None
+    effective_distance_yards: float
+    wind_adjustment_yards: float
+    elevation_adjustment_yards: float
+    lie_adjustment_yards: float
+    commentary: str

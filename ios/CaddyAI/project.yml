@@ -1,0 +1,55 @@
+# XcodeGen spec. Run `xcodegen generate` in this directory (requires macOS
+# + Xcode 15+) to produce CaddyAI.xcodeproj.
+name: CaddyAI
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  bundleIdPrefix: ai.caddyai
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""          # fill in your Apple Developer Team ID
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+
+packages:
+  CaddyAICore:
+    path: .
+
+targets:
+  CaddyAI:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/CaddyAI
+    resources:
+      - path: Sources/CaddyAI/Resources
+    dependencies:
+      - package: CaddyAICore
+    info:
+      path: Sources/CaddyAI/Info.plist
+      properties:
+        CFBundleDisplayName: CaddyAI
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: "CaddyAI needs camera access to record your golf swing for analysis."
+        NSMicrophoneUsageDescription: "CaddyAI records audio alongside your swing so you can replay it later."
+        NSPhotoLibraryAddUsageDescription: "CaddyAI can save recorded swings to your Photos library."
+        NSLocationWhenInUseUsageDescription: "CaddyAI uses your location on the course for distance calculations."
+        NSBluetoothAlwaysUsageDescription: "CaddyAI pairs with your Garmin watch to receive live shot data."
+        NSBluetoothPeripheralUsageDescription: "CaddyAI pairs with your Garmin watch to receive live shot data."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.caddyai.CaddyAI
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: "YES"
