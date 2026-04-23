@@ -156,8 +156,50 @@ class CoachingReport(_Model):
     )
     root_causes: list[str]
     drills: list[Drill]
-    # Non-empty only when we fell back to the deterministic mock coach.
-    source: Literal["openai", "mock"] = "openai"
+    # Where this report came from. "openai" = text-only GPT-4o-mini call,
+    # "openai-vision" = GPT-4o with keyframe images, "mock" = deterministic
+    # fallback used when OPENAI_API_KEY is unset or OpenAI returned an error.
+    source: Literal["openai", "openai-vision", "mock"] = "openai"
+
+
+# --- Persistence & context -------------------------------------------------
+
+
+class SwingKeyframe(_Model):
+    """One still frame extracted from the swing capture. Sent base64-encoded
+    so clients don't need multipart upload. JPEG quality ~0.6 is enough for
+    the LLM; we're not doing pixel-exact analysis server-side."""
+
+    position: Literal["address", "top", "impact", "finish"]
+    jpeg_base64: str
+
+
+class CoachRequest(_Model):
+    """New envelope for `POST /coach/swing` — lets the client ship
+    optional keyframes for Vision-LLM analysis and a stable device id so
+    the coach can retrieve the player's history for RAG context."""
+
+    metrics: SwingMetrics
+    keyframes: list[SwingKeyframe] = Field(default_factory=list)
+    # Required to retrieve history; when absent the request is treated as
+    # a one-shot diagnosis with no memory.
+    device_id: str | None = None
+
+
+class SwingHistoryEntry(_Model):
+    """One previously-analyzed swing, returned by the history endpoint
+    and used as RAG context. No keyframes are returned — clients that
+    want them can re-fetch by swing_id (endpoint TBD)."""
+
+    swing_id: str
+    ts: datetime
+    metrics: SwingMetrics
+    report: CoachingReport
+
+
+class SwingHistoryResponse(_Model):
+    device_id: str
+    entries: list[SwingHistoryEntry]
 
 
 # --- On-course caddy -------------------------------------------------------

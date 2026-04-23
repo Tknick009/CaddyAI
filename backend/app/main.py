@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db import create_all
 from app.routers import bag, caddy, coach, garmin, launch_monitor, rounds
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Create the swing-history tables on first boot. Cheap no-op when they
+    # already exist. Real production deployments should replace this with
+    # an Alembic migration.
+    await create_all()
+    yield
+
 
 app = FastAPI(
     title="CaddyAI",
@@ -15,6 +28,7 @@ app = FastAPI(
         "rule-based on-course caddy recommender, launch-monitor CSV import, "
         "bag management, and a Garmin OAuth stub."
     ),
+    lifespan=_lifespan,
 )
 
 # The iOS simulator, iPhone on the same Wi-Fi, and Swagger UI all need CORS.

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import CaddyAICore
 
 /// Global state shared across tabs.
@@ -14,8 +15,9 @@ final class AppState: ObservableObject {
     @Published var bag: Bag
     @Published var rounds: [Round]
     @Published var backendBaseURL: URL {
-        didSet { api = APIClient(baseURL: backendBaseURL) }
+        didSet { api = APIClient(baseURL: backendBaseURL, deviceId: deviceId) }
     }
+    let deviceId: String
     @Published var lastSwingReport: CoachingReport?
     @Published var lastSwingMetrics: SwingMetrics?
 
@@ -24,6 +26,20 @@ final class AppState: ObservableObject {
     private static let bagKey = "CaddyAI.bag"
     private static let roundsKey = "CaddyAI.rounds"
     private static let backendKey = "CaddyAI.backend_url"
+    private static let deviceIdKey = "CaddyAI.device_id"
+
+    /// Stable-per-install identifier used as the RAG memory key on the
+    /// server. Falls back to a random UUID if `identifierForVendor` is
+    /// unavailable and persists it in `UserDefaults`.
+    private static func resolveDeviceId() -> String {
+        let defaults = UserDefaults.standard
+        if let stored = defaults.string(forKey: Self.deviceIdKey), !stored.isEmpty {
+            return stored
+        }
+        let new = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        defaults.set(new, forKey: Self.deviceIdKey)
+        return new
+    }
 
     init() {
         let defaults = UserDefaults.standard
@@ -56,7 +72,9 @@ final class AppState: ObservableObject {
             url = URL(string: "http://localhost:8000")!
         }
         self.backendBaseURL = url
-        self.api = APIClient(baseURL: url)
+        let deviceId = Self.resolveDeviceId()
+        self.deviceId = deviceId
+        self.api = APIClient(baseURL: url, deviceId: deviceId)
     }
 
     func persist() {

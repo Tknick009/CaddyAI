@@ -25,6 +25,11 @@ struct HomeView: View {
                     } label: {
                         Label("Import launch monitor data", systemImage: "tray.and.arrow.down.fill")
                     }
+                    NavigationLink {
+                        SwingHistoryView()
+                    } label: {
+                        Label("Swing history", systemImage: "clock.arrow.circlepath")
+                    }
                 }
 
                 Section("Status") {

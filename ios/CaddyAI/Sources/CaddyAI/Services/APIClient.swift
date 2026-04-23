@@ -20,18 +20,36 @@ struct APIClient {
 
     let baseURL: URL
     let session: URLSession
+    /// Stable per-install identifier. The caller seeds this with
+    /// `UIDevice.current.identifierForVendor?.uuidString` and it rides
+    /// every request as `X-Device-Id` so the backend can build history.
+    var deviceId: String?
 
-    init(baseURL: URL, session: URLSession = .shared) {
+    init(baseURL: URL, session: URLSession = .shared, deviceId: String? = nil) {
         self.baseURL = baseURL
         self.session = session
+        self.deviceId = deviceId
     }
 
-    func coachSwing(_ metrics: SwingMetrics) async throws -> CoachingReport {
-        try await request(
+    func coachSwing(
+        _ metrics: SwingMetrics,
+        keyframes: [SwingKeyframe] = []
+    ) async throws -> CoachingReport {
+        let envelope = CoachRequest(metrics: metrics, keyframes: keyframes, deviceId: deviceId)
+        return try await request(
             path: "/coach/swing",
             method: "POST",
-            body: metrics,
+            body: envelope,
             decode: CoachingReport.self
+        )
+    }
+
+    func swingHistory(limit: Int = 20) async throws -> SwingHistoryResponse {
+        try await request(
+            path: "/coach/swing/history?limit=\(limit)",
+            method: "GET",
+            body: Empty?.none,
+            decode: SwingHistoryResponse.self
         )
     }
 
@@ -67,6 +85,9 @@ struct APIClient {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let deviceId {
+            req.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        }
         if let body {
             do {
                 req.httpBody = try CaddyAIJSON.encoder.encode(body)
