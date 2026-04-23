@@ -103,11 +103,17 @@ def _mock_report(m: SwingMetrics) -> CoachingReport:
             f"Only {m.weight_transfer_pct:.0f}% of weight reaches the lead foot "
             "at impact; you're hanging back."
         )
-    if m.attack_angle_deg is not None and m.club_kind != "driver":
+    if (
+        m.attack_angle_deg is not None
+        and m.club_kind is not None
+        and m.club_kind != "driver"
+    ):
         aa = m.attack_angle_deg
+        club_value = m.club_kind.value if hasattr(m.club_kind, "value") else str(m.club_kind)
+        club_label = club_value if club_value in ("iron", "hybrid", "wood", "wedge") else "club"
         if aa > 0:
             causes.append(
-                f"Attack angle is {aa:+.1f}° (hitting up on an iron); expect "
+                f"Attack angle is {aa:+.1f}° (hitting up on a {club_label}); expect "
                 "thin contact and loss of compression."
             )
             drills.append(
