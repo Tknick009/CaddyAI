@@ -85,6 +85,23 @@ def test_caddy_returns_sorted_candidates():
     assert rec.candidates[0].club_id == rec.primary_club_id
 
 
+def test_alt_club_commentary_uses_alts_own_expected_strokes():
+    """Regression: the alt club can land at any index ≥ 1 in the sorted
+    candidate list (the picker looks for the first club on the *opposite*
+    side of the play distance). The commentary must report that alt's
+    expected strokes — not blindly `candidates[1]`.
+    """
+    rec = caddy.recommend(ShotContext(target_distance_yards=150.0), _bag())
+    if rec.alt_club_id is None or rec.alt_club_id == rec.primary_club_id:
+        pytest.skip("no distinct alt for this scenario")
+    alt_choice = next(c for c in rec.candidates if c.club_id == rec.alt_club_id)
+    es_text = f"{alt_choice.expected_strokes:.2f} ES"
+    assert es_text in rec.commentary, (
+        f"commentary should quote the alt's own ES ({es_text}), "
+        f"got: {rec.commentary!r}"
+    )
+
+
 def test_altitude_shortens_the_club_choice():
     sea = caddy.recommend(ShotContext(target_distance_yards=150.0), _bag())
     denver = caddy.recommend(

@@ -156,13 +156,16 @@ def recommend(ctx: ShotContext, bag: Bag) -> CaddyRecommendation:
     # Pick an alternate that's on the *opposite* side of the target so the
     # "smooth X / hard Y" framing keeps working.
     alt: Club | None = None
+    alt_choice: ClubChoice | None = None
     primary_delta = primary_choice.typical_play_yards - play_distance
     for choice in candidates[1:]:
         if (choice.typical_play_yards - play_distance) * primary_delta <= 0:
             alt = club_by_id[choice.club_id]
+            alt_choice = choice
             break
     if alt is None and len(candidates) > 1:
-        alt = club_by_id[candidates[1].club_id]
+        alt_choice = candidates[1]
+        alt = club_by_id[alt_choice.club_id]
 
     stock_primary = _personal_or_default(primary, personal)
     wind_adj = physics.wind_adjustment_yards(
@@ -196,8 +199,8 @@ def recommend(ctx: ShotContext, bag: Bag) -> CaddyRecommendation:
     else:
         swing_note = f"Full {primary.name} — you'll need every bit of it."
 
-    if alt and alt.id != primary.id:
-        swing_note += f" Alt: {alt.name} ({candidates[1].expected_strokes:.2f} ES)."
+    if alt and alt_choice and alt.id != primary.id:
+        swing_note += f" Alt: {alt.name} ({alt_choice.expected_strokes:.2f} ES)."
     swing_note += f" Expected {primary_choice.expected_strokes:.2f} strokes to hole."
 
     return CaddyRecommendation(
