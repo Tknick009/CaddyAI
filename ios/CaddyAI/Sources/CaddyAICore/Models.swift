@@ -349,7 +349,15 @@ public struct ShotContext: Codable, Hashable, Sendable {
         shotShapePreference: ShotShape? = nil,
         avoidLeft: Bool = false,
         avoidRight: Bool = false,
-        mustCarryYards: Double? = nil
+        mustCarryYards: Double? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        altitudeFt: Double? = nil,
+        temperatureC: Double? = nil,
+        pressureHpa: Double? = nil,
+        humidityPct: Double? = nil,
+        hazardLeftYards: Double? = nil,
+        hazardRightYards: Double? = nil
     ) {
         self.targetDistanceYards = targetDistanceYards
         self.elevationChangeFt = elevationChangeFt
@@ -361,6 +369,14 @@ public struct ShotContext: Codable, Hashable, Sendable {
         self.avoidLeft = avoidLeft
         self.avoidRight = avoidRight
         self.mustCarryYards = mustCarryYards
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitudeFt = altitudeFt
+        self.temperatureC = temperatureC
+        self.pressureHpa = pressureHpa
+        self.humidityPct = humidityPct
+        self.hazardLeftYards = hazardLeftYards
+        self.hazardRightYards = hazardRightYards
     }
 }
 
