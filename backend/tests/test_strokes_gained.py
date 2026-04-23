@@ -85,6 +85,35 @@ def test_caddy_returns_sorted_candidates():
     assert rec.candidates[0].club_id == rec.primary_club_id
 
 
+def test_dispersion_penalizes_wide_lateral_miss():
+    """Regression: `distance_to_hole` must combine longitudinal *and*
+    lateral misses. Using only the longitudinal delta collapses a
+    shot that lands the correct distance but 26y wide of the pin to
+    "at the hole", biasing the ranker toward high-dispersion clubs.
+
+    A club that lands the right carry but with a wide lateral σ has
+    to finish with more expected strokes than the same club with a
+    tight lateral σ.
+    """
+    tight = sg.Dispersion(lateral_std_yards=3.0, long_std_yards=3.0)
+    wide = sg.Dispersion(lateral_std_yards=25.0, long_std_yards=3.0)
+    tight_es = sg.expected_strokes_for_shot(
+        play_distance_yards=150.0, carry_yards=150.0,
+        dispersion=tight, base_lie=Lie.fairway,
+    )
+    wide_es = sg.expected_strokes_for_shot(
+        play_distance_yards=150.0, carry_yards=150.0,
+        dispersion=wide, base_lie=Lie.fairway,
+    )
+    # With the old bug, these two were identical (lateral miss ignored).
+    # The wide club should now be measurably worse — at least a tenth
+    # of a stroke at this scale.
+    assert wide_es > tight_es + 0.1, (
+        f"wide-dispersion club should finish with more strokes than tight "
+        f"(tight={tight_es:.3f}, wide={wide_es:.3f})"
+    )
+
+
 def test_alt_club_commentary_uses_alts_own_expected_strokes():
     """Regression: the alt club can land at any index ≥ 1 in the sorted
     candidate list (the picker looks for the first club on the *opposite*

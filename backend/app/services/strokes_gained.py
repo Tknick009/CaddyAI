@@ -169,10 +169,15 @@ def expected_strokes_for_shot(
         for j, nj in enumerate(_GH_NODES):
             long_miss = nj * dispersion.long_std_yards
             actual_carry = carry_yards + long_miss
-            distance_to_hole = abs(play_distance_yards - actual_carry)
+            long_error = play_distance_yards - actual_carry
+            # Pythagorean distance to the hole — the longitudinal and
+            # lateral misses combine. Using abs(long_error) alone
+            # collapses wide-side misses to "at the hole" and biases
+            # the model toward high-dispersion clubs.
+            distance_to_hole = math.sqrt(long_error * long_error + lateral_miss * lateral_miss)
             lie_after, penalty = _landing_lie(
                 lateral_miss,
-                play_distance_yards - actual_carry,
+                long_error,
                 distance_to_hole,
                 hazard_left_yards,
                 hazard_right_yards,
