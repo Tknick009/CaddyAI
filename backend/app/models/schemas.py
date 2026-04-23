@@ -226,6 +226,43 @@ class ShotContext(_Model):
     avoid_right: bool = False
     must_carry_yards: float | None = None
 
+    # --- Environment (optional; the server enriches from OpenWeather / ---
+    # --- Open-Elevation when lat/lon are provided and a key is set) ------
+    latitude: float | None = None
+    longitude: float | None = None
+    altitude_ft: float | None = Field(
+        default=None,
+        description="Altitude of the shot above sea level (feet). Affects air density.",
+    )
+    temperature_c: float | None = None
+    pressure_hpa: float | None = None
+    humidity_pct: float | None = None
+
+    # --- Hazards (optional; used by the strokes-gained caddy) ---------------
+    hazard_left_yards: float | None = Field(
+        default=None,
+        description="Lateral distance to the nearest penalty/OB on the left (yards).",
+    )
+    hazard_right_yards: float | None = Field(
+        default=None,
+        description="Lateral distance to the nearest penalty/OB on the right (yards).",
+    )
+
+
+class ClubChoice(_Model):
+    """One candidate club, scored by expected strokes for *this* shot."""
+
+    club_id: str
+    typical_play_yards: float = Field(
+        description="Club's carry distance after all environmental adjustments."
+    )
+    expected_strokes: float = Field(
+        description="Broadie expected strokes from the predicted landing spot, "
+        "marginalized over the player's dispersion."
+    )
+    lateral_stddev_yards: float
+    long_stddev_yards: float
+
 
 class CaddyRecommendation(_Model):
     primary_club_id: str
@@ -234,4 +271,9 @@ class CaddyRecommendation(_Model):
     wind_adjustment_yards: float
     elevation_adjustment_yards: float
     lie_adjustment_yards: float
+    # v2 additions — all nullable for forward compat with v1 clients.
+    air_density_adjustment_yards: float | None = None
+    expected_strokes: float | None = None
+    candidates: list[ClubChoice] = Field(default_factory=list)
+    weather_source: Literal["none", "request", "openweather"] | None = "none"
     commentary: str

@@ -326,6 +326,19 @@ public struct ShotContext: Codable, Hashable, Sendable {
     public var avoidRight: Bool
     public var mustCarryYards: Double?
 
+    // v2 — environment enrichment. The server also fills these when
+    // `latitude`/`longitude` are set and a weather API key is configured.
+    public var latitude: Double?
+    public var longitude: Double?
+    public var altitudeFt: Double?
+    public var temperatureC: Double?
+    public var pressureHpa: Double?
+    public var humidityPct: Double?
+
+    // v2 — hazards for the strokes-gained caddy.
+    public var hazardLeftYards: Double?
+    public var hazardRightYards: Double?
+
     public init(
         targetDistanceYards: Double,
         elevationChangeFt: Double = 0,
@@ -351,6 +364,16 @@ public struct ShotContext: Codable, Hashable, Sendable {
     }
 }
 
+/// One candidate club with its strokes-gained score for the current shot.
+public struct ClubChoice: Codable, Hashable, Sendable, Identifiable {
+    public var id: String { clubId }
+    public let clubId: String
+    public let typicalPlayYards: Double
+    public let expectedStrokes: Double
+    public let lateralStddevYards: Double
+    public let longStddevYards: Double
+}
+
 public struct CaddyRecommendation: Codable, Hashable, Sendable {
     public let primaryClubId: String
     public let altClubId: String?
@@ -358,7 +381,38 @@ public struct CaddyRecommendation: Codable, Hashable, Sendable {
     public let windAdjustmentYards: Double
     public let elevationAdjustmentYards: Double
     public let lieAdjustmentYards: Double
+    // v2 — all optional for forward compat with v1 servers.
+    public let airDensityAdjustmentYards: Double?
+    public let expectedStrokes: Double?
+    public let candidates: [ClubChoice]?
+    public let weatherSource: String?   // "none" | "request" | "openweather"
     public let commentary: String
+
+    public init(
+        primaryClubId: String,
+        altClubId: String? = nil,
+        effectiveDistanceYards: Double,
+        windAdjustmentYards: Double,
+        elevationAdjustmentYards: Double,
+        lieAdjustmentYards: Double,
+        airDensityAdjustmentYards: Double? = nil,
+        expectedStrokes: Double? = nil,
+        candidates: [ClubChoice]? = nil,
+        weatherSource: String? = nil,
+        commentary: String
+    ) {
+        self.primaryClubId = primaryClubId
+        self.altClubId = altClubId
+        self.effectiveDistanceYards = effectiveDistanceYards
+        self.windAdjustmentYards = windAdjustmentYards
+        self.elevationAdjustmentYards = elevationAdjustmentYards
+        self.lieAdjustmentYards = lieAdjustmentYards
+        self.airDensityAdjustmentYards = airDensityAdjustmentYards
+        self.expectedStrokes = expectedStrokes
+        self.candidates = candidates
+        self.weatherSource = weatherSource
+        self.commentary = commentary
+    }
 }
 
 // MARK: - JSON coding helpers
