@@ -1,9 +1,20 @@
 """LLM-backed swing coach with a deterministic mock fallback.
 
-The iOS app never sees raw video — only `SwingMetrics`. We take those
-metrics, build a structured prompt, and ask OpenAI for a `CoachingReport`.
-If `OPENAI_API_KEY` is unset (local dev, CI, tests) we fall back to a
+Takes `SwingMetrics` (+ optional keyframe images and prior-swing context),
+builds a structured prompt, and asks OpenAI for a `CoachingReport`. If
+`OPENAI_API_KEY` is unset (local dev, CI, tests) we fall back to a
 deterministic rule-based coach so the endpoint still behaves sensibly.
+
+Two upgrade paths live here:
+
+- **Vision mode** — when keyframes are provided and a vision-capable model
+  is configured (gpt-4o), the user message becomes a multi-part content
+  array: text + image_url parts with base64 data URIs. This gives the
+  coach the same view a human pro would: still frames at address, top,
+  impact, and finish.
+- **RAG mode** — when `history` is provided, recent summaries are folded
+  into the user message so advice references recurring tendencies
+  instead of re-diagnosing the same fault every session.
 """
 
 from __future__ import annotations
@@ -15,12 +26,20 @@ from typing import Any
 
 import httpx
 
-from app.models.schemas import CoachingReport, Drill, SwingMetrics
+from app.models.schemas import (
+    CoachingReport,
+    Drill,
+    SwingHistoryEntry,
+    SwingKeyframe,
+    SwingMetrics,
+)
 
 log = logging.getLogger(__name__)
 
 _OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+# Text-only default. Override per-request if vision is configured below.
 _MODEL = os.environ.get("CADDYAI_OPENAI_MODEL", "gpt-4o-mini")
+_VISION_MODEL = os.environ.get("CADDYAI_OPENAI_VISION_MODEL", "gpt-4o")
 
 
 SYSTEM_PROMPT = """You are a PGA-certified golf swing coach.
@@ -51,6 +70,13 @@ Rules:
   unusually trustworthy; be more confident in your diagnosis. When
   "face_on" only, caveat plane / attack-angle claims — those are unreliable
   from a single 2D face-on camera.
+- If keyframe images are attached (address / top / impact / finish), use
+  them — they're the same stills a human coach would look at. Reference
+  visual evidence only when the images actually show it.
+- If the "Recent sessions" section is present, treat it as memory of
+  THIS player's recurring tendencies. When the same fault (e.g. early
+  extension) shows up again, acknowledge it and pick a progression of
+  the drill rather than re-suggesting the basic one.
 """
 
 
@@ -192,16 +218,65 @@ def _mock_report(m: SwingMetrics) -> CoachingReport:
     )
 
 
-async def _openai_report(metrics: SwingMetrics, api_key: str) -> CoachingReport:
+def _history_block(history: list[SwingHistoryEntry]) -> str:
+    """Condense the player's recent sessions into a few bullet lines. Keeps
+    the token budget small — we only need enough to let the model spot a
+    recurring fault, not replay whole past reports."""
+    if not history:
+        return ""
+    lines = ["\nRecent sessions (most recent first):"]
+    for h in history[:5]:
+        m = h.metrics
+        r = h.report
+        causes = "; ".join(r.root_causes[:2]) if r.root_causes else "no major faults"
+        lines.append(
+            f"- {h.ts:%Y-%m-%d} {m.club_kind or 'club'}: tempo {m.tempo_ratio:.1f}:1, "
+            f"X-factor {m.x_factor_deg:.0f}°, flight: {r.likely_ball_flight}. {causes}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _user_message(
+    metrics: SwingMetrics,
+    keyframes: list[SwingKeyframe],
+    history: list[SwingHistoryEntry],
+) -> Any:
+    """Build the `user` content. Text-only when there are no keyframes;
+    multi-part list (text + image_url) otherwise so GPT-4o vision sees
+    the stills. Returns the content suitable for the Chat Completions API.
+    """
+    prose = (
+        "Analyze this swing:\n"
+        + metrics.model_dump_json(indent=2)
+        + _history_block(history)
+    )
+    if not keyframes:
+        return prose
+    content: list[dict[str, Any]] = [{"type": "text", "text": prose}]
+    for kf in keyframes:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{kf.jpeg_base64}"},
+            }
+        )
+    return content
+
+
+async def _openai_report(
+    metrics: SwingMetrics,
+    api_key: str,
+    keyframes: list[SwingKeyframe],
+    history: list[SwingHistoryEntry],
+) -> CoachingReport:
+    vision = bool(keyframes)
+    model = _VISION_MODEL if vision else _MODEL
     payload: dict[str, Any] = {
-        "model": _MODEL,
+        "model": model,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": "Analyze this swing:\n" + metrics.model_dump_json(indent=2),
-            },
+            {"role": "user", "content": _user_message(metrics, keyframes, history)},
         ],
         "temperature": 0.4,
     }
@@ -218,24 +293,29 @@ async def _openai_report(metrics: SwingMetrics, api_key: str) -> CoachingReport:
     body = resp.json()
     content = body["choices"][0]["message"]["content"]
     parsed = json.loads(content)
-    # Ensure drills come back as Drill objects even if the model returns plain dicts.
     drills = [Drill(**d) if isinstance(d, dict) else d for d in parsed.get("drills", [])]
     return CoachingReport(
         summary=parsed["summary"],
         likely_ball_flight=parsed["likely_ball_flight"],
         root_causes=list(parsed.get("root_causes", [])),
         drills=drills,
-        source="openai",
+        source="openai-vision" if vision else "openai",
     )
 
 
-async def generate_report(metrics: SwingMetrics) -> CoachingReport:
+async def generate_report(
+    metrics: SwingMetrics,
+    keyframes: list[SwingKeyframe] | None = None,
+    history: list[SwingHistoryEntry] | None = None,
+) -> CoachingReport:
+    keyframes = keyframes or []
+    history = history or []
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         log.info("OPENAI_API_KEY not set; returning mock coach report")
         return _mock_report(metrics)
     try:
-        return await _openai_report(metrics, api_key)
+        return await _openai_report(metrics, api_key, keyframes, history)
     except Exception:
         log.exception("OpenAI call failed; falling back to mock coach")
         return _mock_report(metrics)

@@ -20,18 +20,37 @@ struct APIClient {
 
     let baseURL: URL
     let session: URLSession
+    /// Stable per-install identifier. The caller seeds this with
+    /// `UIDevice.current.identifierForVendor?.uuidString` and it rides
+    /// every request as `X-Device-Id` so the backend can build history.
+    var deviceId: String?
 
-    init(baseURL: URL, session: URLSession = .shared) {
+    init(baseURL: URL, session: URLSession = .shared, deviceId: String? = nil) {
         self.baseURL = baseURL
         self.session = session
+        self.deviceId = deviceId
     }
 
-    func coachSwing(_ metrics: SwingMetrics) async throws -> CoachingReport {
-        try await request(
+    func coachSwing(
+        _ metrics: SwingMetrics,
+        keyframes: [SwingKeyframe] = []
+    ) async throws -> CoachingReport {
+        let envelope = CoachRequest(metrics: metrics, keyframes: keyframes, deviceId: deviceId)
+        return try await request(
             path: "/coach/swing",
             method: "POST",
-            body: metrics,
+            body: envelope,
             decode: CoachingReport.self
+        )
+    }
+
+    func swingHistory(limit: Int = 20) async throws -> SwingHistoryResponse {
+        try await request(
+            path: "/coach/swing/history",
+            method: "GET",
+            query: [URLQueryItem(name: "limit", value: String(limit))],
+            body: Empty?.none,
+            decode: SwingHistoryResponse.self
         )
     }
 
@@ -61,12 +80,16 @@ struct APIClient {
     private func request<Body: Encodable, Out: Decodable>(
         path: String,
         method: String,
+        query: [URLQueryItem] = [],
         body: Body?,
         decode: Out.Type
     ) async throws -> Out {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: try makeURL(path: path, query: query))
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let deviceId {
+            req.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        }
         if let body {
             do {
                 req.httpBody = try CaddyAIJSON.encoder.encode(body)
@@ -88,6 +111,17 @@ struct APIClient {
             return try CaddyAIJSON.decoder.decode(Out.self, from: data)
         } catch {
             throw APIError.decoding(error)
+        }
+    }
+
+    /// Delegate to the Linux-testable helper in `CaddyAICore`.
+    private func makeURL(path: String, query: [URLQueryItem]) throws -> URL {
+        do {
+            return try APIEndpoint.url(base: baseURL, path: path, query: query)
+        } catch APIEndpoint.Error.invalidBaseURL(let s) {
+            throw APIError.http(0, "Invalid baseURL: \(s)")
+        } catch APIEndpoint.Error.couldNotBuildURL(let p) {
+            throw APIError.http(0, "Could not build URL for \(p)")
         }
     }
 }

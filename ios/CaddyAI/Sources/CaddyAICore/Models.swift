@@ -249,7 +249,53 @@ public struct CoachingReport: Codable, Hashable, Sendable {
     public let likelyBallFlight: String
     public let rootCauses: [String]
     public let drills: [Drill]
-    public let source: String  // "openai" | "mock"
+    public let source: String  // "openai" | "openai-vision" | "mock"
+}
+
+/// A still frame captured at one of the four canonical swing positions.
+/// `jpegBase64` is the image data encoded as a base64 string so the whole
+/// payload can ride in the same JSON request as the metrics.
+public struct SwingKeyframe: Codable, Hashable, Sendable {
+    public enum Position: String, Codable, Sendable {
+        case address, top, impact, finish
+    }
+
+    public let position: Position
+    public let jpegBase64: String
+
+    public init(position: Position, jpegBase64: String) {
+        self.position = position
+        self.jpegBase64 = jpegBase64
+    }
+}
+
+/// v2 envelope for `POST /coach/swing`. Keeps the API shape stable as
+/// features (keyframes, device memory) are added. v1 clients that send
+/// a bare `SwingMetrics` still work — the backend accepts either shape.
+public struct CoachRequest: Codable, Hashable, Sendable {
+    public let metrics: SwingMetrics
+    public let keyframes: [SwingKeyframe]
+    public let deviceId: String?
+
+    public init(metrics: SwingMetrics, keyframes: [SwingKeyframe] = [], deviceId: String? = nil) {
+        self.metrics = metrics
+        self.keyframes = keyframes
+        self.deviceId = deviceId
+    }
+}
+
+/// One row returned by `GET /coach/swing/history`.
+public struct SwingHistoryEntry: Codable, Hashable, Sendable, Identifiable {
+    public var id: String { swingId }
+    public let swingId: String
+    public let ts: Date
+    public let metrics: SwingMetrics
+    public let report: CoachingReport
+}
+
+public struct SwingHistoryResponse: Codable, Hashable, Sendable {
+    public let deviceId: String
+    public let entries: [SwingHistoryEntry]
 }
 
 // MARK: - On-course caddy
