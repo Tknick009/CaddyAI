@@ -43,6 +43,14 @@ Rules:
 - Lateral sway > 6 cm toward the trail side on the backswing is a fault.
 - Head movement > 8 cm is excessive.
 - Weight transfer < 65% on the lead foot at impact is a fault for irons.
+- When an `attack_angle_deg` is provided, interpret it as club (or lead-
+  wrist) descent at impact: irons should be −2° to −5°, driver +2° to +5°.
+- When a `sequencing_index` is provided, values < 0.5 mean the kinematic
+  sequence is out of order (torso firing before pelvis, a power leak).
+- When a `viewpoint` of "pose3d" or "fused" is supplied, the metrics are
+  unusually trustworthy; be more confident in your diagnosis. When
+  "face_on" only, caveat plane / attack-angle claims — those are unreliable
+  from a single 2D face-on camera.
 """
 
 
@@ -94,6 +102,50 @@ def _mock_report(m: SwingMetrics) -> CoachingReport:
         causes.append(
             f"Only {m.weight_transfer_pct:.0f}% of weight reaches the lead foot "
             "at impact; you're hanging back."
+        )
+    if m.attack_angle_deg is not None and m.club_kind != "driver":
+        aa = m.attack_angle_deg
+        if aa > 0:
+            causes.append(
+                f"Attack angle is {aa:+.1f}° (hitting up on an iron); expect "
+                "thin contact and loss of compression."
+            )
+            drills.append(
+                Drill(
+                    name="Ball-first contact drill",
+                    description=(
+                        "Place a tee 1 inch in front of the ball. Swing to clip "
+                        "the tee after the ball — forces a descending strike."
+                    ),
+                )
+            )
+        elif aa < -7:
+            causes.append(
+                f"Attack angle is {aa:.1f}° — too steep; this digs and loses distance."
+            )
+    if m.attack_angle_deg is not None and m.club_kind == "driver" and m.attack_angle_deg < 0:
+        causes.append(
+            f"Driver attack angle is {m.attack_angle_deg:.1f}° (hitting down); "
+            "tee higher and feel the ball is forward in your stance to launch up."
+        )
+    if m.sequencing_index is not None and m.sequencing_index < 0.5:
+        causes.append(
+            f"Kinematic sequence score {m.sequencing_index:.2f}: upper body is "
+            "firing before the lower body — a classic power leak."
+        )
+        drills.append(
+            Drill(
+                name="Step-through drill",
+                description=(
+                    "Start at address with feet together. Take a step toward the "
+                    "target as you start down. Grooves pelvis-first sequencing."
+                ),
+            )
+        )
+    if m.pelvis_slide_cm is not None and m.pelvis_slide_cm > 8:
+        causes.append(
+            f"Pelvis slides {m.pelvis_slide_cm:.0f} cm laterally on the backswing "
+            "instead of rotating — kills coil."
         )
 
     # Synthesize the most likely ball flight from the faults.

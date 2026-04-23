@@ -2,26 +2,58 @@ import Foundation
 import AVFoundation
 import CaddyAICore
 
+/// Capture mode for a swing recording.
+///
+/// `face2D` / `dtl2D` run `VNDetectHumanBodyPoseRequest` and produce
+/// `[PoseFrame]` — the 2D swing analyzer handles these, and two
+/// captures can be fused by `MultiAngleSwingAnalyzer`.
+///
+/// `pose3D` runs `VNDetectHumanBodyPose3DRequest` (iOS 17+) and
+/// produces `[Pose3DFrame]`, which `SwingAnalyzer3D` consumes directly
+/// — a single capture yields honest turn, plane, and attack-angle
+/// numbers without needing two viewpoints.
+enum SwingCaptureMode: Equatable, Hashable {
+    case face2D
+    case dtl2D
+    case pose3D
+}
+
+/// Container for whichever kind of frames a capture collected. The UI
+/// doesn't need to care which — it just hands this blob to
+/// `SwingAnalyzerFacade` on the way to the coach.
+enum SwingCaptureResult {
+    case twoD(mode: SwingCaptureMode, frames: [PoseFrame])
+    case threeD(frames: [Pose3DFrame])
+}
+
 /// Camera capture for swing recording.
 ///
 /// We run the capture at the highest frame rate the device reports (up
-/// to 120 fps) and hand each frame to the pose estimator. Frames and
-/// their extracted `PoseFrame`s are collected into a `[PoseFrame]`
-/// buffer while the user holds down "record" — stopping returns the
-/// buffer so the swing analyzer can chew on it.
+/// to 240 fps) and hand each frame to the pose estimator the current
+/// `mode` selects. Frames are collected into a buffer while the user
+/// holds "record" — stopping returns the buffer as a `SwingCaptureResult`.
 final class SwingCaptureSession: NSObject, ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var isRecording = false
     @Published private(set) var framesCollected = 0
+    @Published var mode: SwingCaptureMode = .face2D
     @Published var lastError: String?
 
     let session = AVCaptureSession()
     let previewLayer: AVCaptureVideoPreviewLayer
 
     private let queue = DispatchQueue(label: "ai.caddyai.capture")
-    private let poseEstimator = PoseEstimator()
+    private let poseEstimator2D = PoseEstimator()
+    private var poseEstimator3D: Any? = {
+        if #available(iOS 17.0, *) {
+            return PoseEstimator3D()
+        } else {
+            return nil
+        }
+    }()
     private var videoOutput: AVCaptureVideoDataOutput?
-    private var buffer: [PoseFrame] = []
+    private var buffer2D: [PoseFrame] = []
+    private var buffer3D: [Pose3DFrame] = []
     private var bufferStart: TimeInterval = 0
 
     override init() {
@@ -29,6 +61,11 @@ final class SwingCaptureSession: NSObject, ObservableObject {
         layer.videoGravity = .resizeAspectFill
         self.previewLayer = layer
         super.init()
+    }
+
+    /// Whether 3D pose is available on this device + OS combination.
+    static var supports3D: Bool {
+        if #available(iOS 17.0, *) { return true } else { return false }
     }
 
     func configure() {
@@ -75,7 +112,8 @@ final class SwingCaptureSession: NSObject, ObservableObject {
 
     func startRecording() {
         queue.async { [weak self] in
-            self?.buffer.removeAll(keepingCapacity: true)
+            self?.buffer2D.removeAll(keepingCapacity: true)
+            self?.buffer3D.removeAll(keepingCapacity: true)
             self?.bufferStart = CACurrentMediaTime()
             DispatchQueue.main.async {
                 self?.isRecording = true
@@ -84,11 +122,17 @@ final class SwingCaptureSession: NSObject, ObservableObject {
         }
     }
 
-    /// Stops recording and returns the collected pose frames.
-    func stopRecording(_ completion: @escaping ([PoseFrame]) -> Void) {
+    /// Stops recording and returns the collected capture.
+    func stopRecording(_ completion: @escaping (SwingCaptureResult) -> Void) {
         queue.async { [weak self] in
             guard let self else { return }
-            let out = self.buffer
+            let out: SwingCaptureResult
+            switch self.mode {
+            case .pose3D:
+                out = .threeD(frames: self.buffer3D)
+            case .face2D, .dtl2D:
+                out = .twoD(mode: self.mode, frames: self.buffer2D)
+            }
             DispatchQueue.main.async {
                 self.isRecording = false
                 completion(out)
@@ -127,10 +171,20 @@ extension SwingCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
     ) {
         guard isRecording else { return }
         let t = CACurrentMediaTime() - bufferStart
-        if let frame = poseEstimator.estimate(sampleBuffer, timestamp: t) {
-            buffer.append(frame)
-            let count = buffer.count
-            DispatchQueue.main.async { self.framesCollected = count }
+        switch mode {
+        case .pose3D:
+            if #available(iOS 17.0, *), let est = poseEstimator3D as? PoseEstimator3D,
+               let frame = est.estimate(sampleBuffer, timestamp: t) {
+                buffer3D.append(frame)
+                let count = buffer3D.count
+                DispatchQueue.main.async { self.framesCollected = count }
+            }
+        case .face2D, .dtl2D:
+            if let frame = poseEstimator2D.estimate(sampleBuffer, timestamp: t) {
+                buffer2D.append(frame)
+                let count = buffer2D.count
+                DispatchQueue.main.async { self.framesCollected = count }
+            }
         }
     }
 }

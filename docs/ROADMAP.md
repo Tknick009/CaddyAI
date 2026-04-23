@@ -15,8 +15,16 @@
 - [x] Connect IQ companion app skeleton (manifest + `App` + BLE service stub)
 - [x] CI on Ubuntu runs backend pytest + Swift core tests
 
-## v2 — Make it real
+## v2 — Pose accuracy
 
+- [x] 3D pose analyzer (`SwingAnalyzer3D`) — real turn, plane, attack
+      angle, pelvis slide/tilt, kinematic-sequencing metrics
+- [x] iOS 17+ `VNDetectHumanBodyPose3DRequest` wrapper (`PoseEstimator3D`)
+- [x] Multi-angle fusion: record face-on **and** down-the-line 2D
+      captures and fuse each metric from the viewpoint that measures it
+      honestly (`MultiAngleSwingAnalyzer`)
+- [x] Coach system-prompt + mock heuristics understand attack-angle,
+      kinematic-sequencing, and pelvis-slide faults
 - [ ] Finish Connect IQ BLE broadcast + iOS GATT central handshake
 - [ ] Garmin Connect OAuth + round/shot sync (post‑round fallback when the
       watch app isn't installed)
@@ -24,8 +32,6 @@
 - [ ] Shot dispersion + strokes‑gained analytics per club
 - [ ] Smart caddy: use course GPS + hazard database (OSM Golf) to account
       for doglegs, lay‑up distances, and pin‑side trouble
-- [ ] Real‑time on‑device pose inference using `VNDetectHumanBodyPoseRequest`
-      at capture time (currently analyzed after capture to keep CPU light)
 - [ ] Swing side‑by‑side compare vs. pro reference library
 
 ## v3 — Nice‑to‑haves
