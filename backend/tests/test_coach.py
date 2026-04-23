@@ -74,6 +74,23 @@ def test_mock_coach_flags_driver_hitting_down():
     assert any("hitting down" in c.lower() for c in report.root_causes)
 
 
+def test_mock_coach_does_not_diagnose_attack_angle_when_club_kind_is_unknown():
+    # Regression: None != "driver" is True in Python, so the non-driver
+    # branch used to fire on unknown clubs and incorrectly shout
+    # "hitting up on an iron" at, e.g., a driver swing the client didn't
+    # tag with a club_kind. Unknown club → no attack-angle verdict.
+    report = coach_svc._mock_report(_metrics(attack_angle_deg=3.0, club_kind=None))
+    assert not any("hitting up" in c.lower() for c in report.root_causes)
+    assert not any("too steep" in c.lower() for c in report.root_causes)
+
+
+def test_mock_coach_labels_wedge_and_hybrid_correctly():
+    wedge = coach_svc._mock_report(_metrics(attack_angle_deg=3.0, club_kind=ClubKind.wedge))
+    assert any("hitting up on a wedge" in c.lower() for c in wedge.root_causes)
+    hybrid = coach_svc._mock_report(_metrics(attack_angle_deg=3.0, club_kind=ClubKind.hybrid))
+    assert any("hitting up on a hybrid" in c.lower() for c in hybrid.root_causes)
+
+
 def test_mock_coach_flags_bad_sequencing():
     report = coach_svc._mock_report(_metrics(sequencing_index=0.3))
     assert any("sequence" in c.lower() for c in report.root_causes)
