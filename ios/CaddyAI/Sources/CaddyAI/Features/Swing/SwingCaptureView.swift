@@ -56,13 +56,34 @@ struct SwingCaptureView: View {
                     .disabled(capture.isRecording || pendingFirstAngle != nil)
 
                     if let pending = pendingFirstAngle {
-                        Text(pendingPrompt(for: pending))
-                            .font(.footnote.bold())
-                            .padding(8)
-                            .background(.yellow.opacity(0.85))
-                            .foregroundStyle(.black)
-                            .clipShape(Capsule())
-                            .padding(.top, 4)
+                        VStack(spacing: 8) {
+                            Text(pendingPrompt(for: pending))
+                                .font(.footnote.bold())
+                                .padding(8)
+                                .background(.yellow.opacity(0.85))
+                                .foregroundStyle(.black)
+                                .clipShape(Capsule())
+
+                            HStack(spacing: 12) {
+                                Button("Analyze this angle") {
+                                    let first = pending
+                                    pendingFirstAngle = nil
+                                    Task { await analyze(first) }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.white)
+                                .foregroundStyle(.black)
+                                .disabled(analyzing || capture.isRecording)
+
+                                Button("Cancel") {
+                                    pendingFirstAngle = nil
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.white)
+                                .disabled(analyzing || capture.isRecording)
+                            }
+                        }
+                        .padding(.top, 4)
                     }
 
                     Spacer()
