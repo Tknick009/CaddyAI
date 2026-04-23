@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!-- Garmin Connect IQ manifest for the CaddyAI companion watch app.
+     Edit `application.id` to a unique GUID before publishing. -->
+<iq:manifest version="3"
+    xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <iq:application
+        entry="CaddyAIApp"
+        id="0000000000000000000000000000caddyai"
+        launcherIcon="@Drawables.LauncherIcon"
+        minSdkVersion="4.0.0"
+        name="@Strings.AppName"
+        type="widget"
+        version="0.1.0">
+        <iq:products>
+            <iq:product id="fenix8"/>
+            <iq:product id="fenix7"/>
+            <iq:product id="epix2"/>
+            <iq:product id="approachs70"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Positioning"/>
+            <iq:uses-permission id="SensorHistory"/>
+            <iq:uses-permission id="Bluetooth"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>

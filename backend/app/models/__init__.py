@@ -1,0 +1,31 @@
+from app.models.schemas import (
+    Bag,
+    CaddyRecommendation,
+    Club,
+    ClubKind,
+    CoachingReport,
+    Drill,
+    Lie,
+    PersonalDistance,
+    Round,
+    Shot,
+    ShotContext,
+    ShotSource,
+    SwingMetrics,
+)
+
+__all__ = [
+    "Bag",
+    "CaddyRecommendation",
+    "Club",
+    "ClubKind",
+    "CoachingReport",
+    "Drill",
+    "Lie",
+    "PersonalDistance",
+    "Round",
+    "Shot",
+    "ShotContext",
+    "ShotSource",
+    "SwingMetrics",
+]
