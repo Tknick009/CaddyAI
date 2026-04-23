@@ -122,3 +122,61 @@ def test_caddy_v1_clients_still_get_recommendation_without_new_fields():
     # v1 fields all still there.
     for k in ("primary_club_id", "effective_distance_yards", "commentary"):
         assert k in body
+
+
+@pytest.mark.asyncio
+async def test_merge_enriched_does_not_inject_compass_bearing_as_shot_relative_wind():
+    """Regression: OpenWeather's `wind.deg` is a meteorological compass
+    bearing (0 = from-north), not the shot-relative angle used by
+    `ShotContext.wind_direction_deg` (0 = headwind). Injecting it
+    directly made the downstream `cos(theta)` wind math nonsense.
+
+    `_merge_enriched` must now only backfill wind *speed* and leave the
+    direction field at whatever the client sent.
+    """
+    from app.models.schemas import ShotContext
+    from app.routers.caddy import _merge_enriched
+
+    enriched = weather_svc.EnrichedConditions(
+        source="openweather",
+        temperature_c=20.0,
+        pressure_hpa=1013.0,
+        humidity_pct=50.0,
+        wind_speed_mph=12.0,
+        wind_direction_deg_from=270.0,   # wind "from west" — NOT a shot-relative angle
+        altitude_ft=100.0,
+    )
+    # Client sent nothing (zeros / defaults).
+    ctx = ShotContext(target_distance_yards=150.0)
+    merged = _merge_enriched(ctx, enriched)
+    # Wind speed backfilled.
+    assert merged.wind_speed_mph == pytest.approx(12.0)
+    # Direction untouched — 0° (client default, conservative headwind
+    # assumption) rather than 270° compass bearing.
+    assert merged.wind_direction_deg == 0.0
+
+
+@pytest.mark.asyncio
+async def test_merge_enriched_respects_client_supplied_wind():
+    from app.models.schemas import ShotContext
+    from app.routers.caddy import _merge_enriched
+
+    enriched = weather_svc.EnrichedConditions(
+        source="openweather",
+        temperature_c=None,
+        pressure_hpa=None,
+        humidity_pct=None,
+        wind_speed_mph=20.0,   # weather says 20
+        wind_direction_deg_from=90.0,
+        altitude_ft=None,
+    )
+    # Client already sent 8 mph tailwind (180° in shot frame).
+    ctx = ShotContext(
+        target_distance_yards=150.0,
+        wind_speed_mph=8.0,
+        wind_direction_deg=180.0,
+    )
+    merged = _merge_enriched(ctx, enriched)
+    # Client's values win — we don't clobber the shot-relative direction.
+    assert merged.wind_speed_mph == pytest.approx(8.0)
+    assert merged.wind_direction_deg == pytest.approx(180.0)

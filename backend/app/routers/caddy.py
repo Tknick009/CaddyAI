@@ -32,14 +32,24 @@ def _merge_enriched(ctx: ShotContext, e: weather_svc.EnrichedConditions) -> Shot
         data["humidity_pct"] = e.humidity_pct
     if ctx.altitude_ft is None and e.altitude_ft is not None:
         data["altitude_ft"] = e.altitude_ft
-    # Only override wind if the client sent zeros (i.e. didn't know).
+    # Only override wind speed if the client sent zero (i.e. didn't know).
+    #
+    # We deliberately do NOT backfill `wind_direction_deg` from weather:
+    #   * OpenWeather's `wind.deg` is a meteorological compass bearing
+    #     (0° = wind coming from north, 90° = from east, ...).
+    #   * `ShotContext.wind_direction_deg` is a *shot-relative* angle
+    #     (0° = pure headwind, 180° = pure tailwind).
+    # Converting between those requires the player's heading toward the
+    # pin, which the server doesn't know. Blindly copying the compass
+    # bearing into the shot-relative field would make the downstream
+    # cos(theta) head/tail component effectively random.
+    #
+    # The client is responsible for the conversion and should send the
+    # computed `wind_direction_deg` directly. Until it does, we leave
+    # the field at the client's default (0 → conservative headwind
+    # assumption) and just pass through the speed.
     if ctx.wind_speed_mph == 0.0 and e.wind_speed_mph is not None:
         data["wind_speed_mph"] = e.wind_speed_mph
-        if e.wind_direction_deg_from is not None:
-            # Meteo "from" → our shot-frame direction is player-heading dependent
-            # and the client is responsible for translating; leave as-is when
-            # the user already set wind_direction_deg.
-            data["wind_direction_deg"] = e.wind_direction_deg_from
     return ShotContext(**data)
 
 
