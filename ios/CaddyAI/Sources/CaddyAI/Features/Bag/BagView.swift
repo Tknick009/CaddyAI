@@ -44,7 +44,7 @@ struct BagView: View {
                 }
             }
             .sheet(item: $editingDistance) { club in
-                DistanceEditor(club: club) { yards in
+                DistanceEditor(club: club, currentDistance: distance(for: club)) { yards in
                     updateDistance(for: club, yards: yards)
                     editingDistance = nil
                 }
@@ -172,6 +172,7 @@ private struct ClubRow: View {
     let distance: Double?
     let onEdit: () -> Void
     let onDelete: () -> Void
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         HStack(spacing: Theme.Spacing.m) {
@@ -218,13 +219,26 @@ private struct ClubRow: View {
                 )
             }
             .buttonStyle(.plain)
+
+            Button { showDeleteConfirm = true } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.textTertiary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(club.name)")
         }
         .padding(.horizontal, Theme.Spacing.l)
         .padding(.vertical, Theme.Spacing.m)
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive, action: onDelete) {
-                Label("Remove", systemImage: "trash")
-            }
+        .confirmationDialog(
+            "Remove \(club.name)?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) { onDelete() }
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -248,10 +262,10 @@ private struct DistanceEditor: View {
     @State private var yards: Double
     @Environment(\.dismiss) private var dismiss
 
-    init(club: Club, onSave: @escaping (Double?) -> Void) {
+    init(club: Club, currentDistance: Double?, onSave: @escaping (Double?) -> Void) {
         self.club = club
         self.onSave = onSave
-        _yards = State(initialValue: 150)
+        _yards = State(initialValue: currentDistance ?? 150)
     }
 
     var body: some View {

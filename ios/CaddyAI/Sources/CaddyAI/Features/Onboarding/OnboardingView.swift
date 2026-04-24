@@ -133,9 +133,35 @@ private struct HandednessPage: View {
     }
 }
 
+/// Retained wrapper around `CLLocationManager` so the manager outlives the
+/// button tap and its delegate callback fires. Publishes an authorization
+/// flag the view observes.
+private final class LocationPermission: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var granted: Bool = false
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        granted = Self.isGranted(manager.authorizationStatus)
+    }
+
+    func request() {
+        manager.requestWhenInUseAuthorization()
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        granted = Self.isGranted(manager.authorizationStatus)
+    }
+
+    private static func isGranted(_ status: CLAuthorizationStatus) -> Bool {
+        status == .authorizedWhenInUse || status == .authorizedAlways
+    }
+}
+
 private struct PermissionsPage: View {
     @State private var cameraGranted = false
-    @State private var locationAsked = false
+    @StateObject private var location = LocationPermission()
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
@@ -164,10 +190,9 @@ private struct PermissionsPage: View {
                     icon: "location.fill",
                     title: "Location",
                     subtitle: "Wind, temperature, and elevation for club picks.",
-                    granted: locationAsked
+                    granted: location.granted
                 ) {
-                    _ = CLLocationManager()
-                    locationAsked = true
+                    location.request()
                     Haptics.tap()
                 }
             }
