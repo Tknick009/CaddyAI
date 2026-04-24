@@ -20,6 +20,13 @@ final class AppState: ObservableObject {
     let deviceId: String
     @Published var lastSwingReport: CoachingReport?
     @Published var lastSwingMetrics: SwingMetrics?
+    /// Chosen once in onboarding, used to flip the pose skeleton in
+    /// `SwingCaptureView`. Defaults to right. Persisted to UserDefaults.
+    @Published var preferredHandedness: Handedness {
+        didSet {
+            UserDefaults.standard.set(preferredHandedness.rawValue, forKey: Self.handednessKey)
+        }
+    }
 
     private(set) var api: APIClient
 
@@ -27,6 +34,8 @@ final class AppState: ObservableObject {
     private static let roundsKey = "CaddyAI.rounds"
     private static let backendKey = "CaddyAI.backend_url"
     private static let deviceIdKey = "CaddyAI.device_id"
+    private static let handednessKey = "CaddyAI.handedness"
+    static let onboardedKey = "CaddyAI.has_onboarded"
 
     /// Stable-per-install identifier used as the RAG memory key on the
     /// server. Falls back to a random UUID if `identifierForVendor` is
@@ -75,6 +84,9 @@ final class AppState: ObservableObject {
         let deviceId = Self.resolveDeviceId()
         self.deviceId = deviceId
         self.api = APIClient(baseURL: url, deviceId: deviceId)
+
+        let handRaw = defaults.string(forKey: Self.handednessKey) ?? Handedness.right.rawValue
+        self.preferredHandedness = Handedness(rawValue: handRaw) ?? .right
     }
 
     func persist() {
