@@ -2,11 +2,12 @@ import SwiftUI
 import AVFoundation
 import CaddyAICore
 
+/// Camera-first capture flow. The live preview takes the full screen; all
+/// controls sit on glass panels so the coach can scan the frame at a glance.
 struct SwingCaptureView: View {
     @EnvironmentObject private var state: AppState
     @StateObject private var capture = SwingCaptureSession()
     @State private var selectedClubKind: ClubKind = .iron
-    @State private var handedness: Handedness = .right
     @State private var analyzing = false
     @State private var showReview = false
 
@@ -20,116 +21,46 @@ struct SwingCaptureView: View {
                 CameraPreviewView(layer: capture.previewLayer)
                     .ignoresSafeArea()
 
-                VStack {
-                    HStack {
-                        Picker("Club", selection: $selectedClubKind) {
-                            ForEach(ClubKind.allCases, id: \.self) { k in
-                                Text(k.rawValue.capitalized).tag(k)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(.white)
+                // Dim the camera edges a touch so white text has contrast.
+                LinearGradient(
+                    colors: [.black.opacity(0.45), .clear, .clear, .black.opacity(0.55)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
-                        Spacer()
-
-                        Picker("Hand", selection: $handedness) {
-                            Text("Right").tag(Handedness.right)
-                            Text("Left").tag(Handedness.left)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 160)
-                    }
-                    .padding(.horizontal)
-                    .padding(.top)
-
-                    Picker("Mode", selection: $capture.mode) {
-                        Text("Face-on").tag(SwingCaptureMode.face2D)
-                        Text("Down-the-line").tag(SwingCaptureMode.dtl2D)
-                        if SwingCaptureSession.supports3D {
-                            Text("3D pose").tag(SwingCaptureMode.pose3D)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.bottom)
-                    .background(.ultraThinMaterial)
-                    .disabled(capture.isRecording || pendingFirstAngle != nil)
-
-                    if let pending = pendingFirstAngle {
-                        VStack(spacing: 8) {
-                            Text(pendingPrompt(for: pending))
-                                .font(.footnote.bold())
-                                .padding(8)
-                                .background(.yellow.opacity(0.85))
-                                .foregroundStyle(.black)
-                                .clipShape(Capsule())
-
-                            HStack(spacing: 12) {
-                                Button("Analyze this angle") {
-                                    let first = pending
-                                    pendingFirstAngle = nil
-                                    Task { await analyze(first) }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.white)
-                                .foregroundStyle(.black)
-                                .disabled(analyzing || capture.isRecording)
-
-                                Button("Cancel") {
-                                    pendingFirstAngle = nil
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(.white)
-                                .disabled(analyzing || capture.isRecording)
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-
+                VStack(spacing: 0) {
+                    topBar
+                    modePill
                     Spacer()
-
+                    if let pending = pendingFirstAngle {
+                        pendingBanner(for: pending)
+                            .padding(.bottom, Theme.Spacing.l)
+                    }
                     if capture.isRecording {
-                        Text("Recording — \(capture.framesCollected) frames")
-                            .padding(8)
-                            .background(.red.opacity(0.75))
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
+                        recordingChip.padding(.bottom, Theme.Spacing.l)
                     }
-
-                    HStack(spacing: 24) {
-                        Button {
-                            if capture.isRecording {
-                                capture.stopRecording { result in
-                                    Task { await handleCapture(result) }
-                                }
-                            } else {
-                                capture.startRecording()
-                            }
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .strokeBorder(.white, lineWidth: 4)
-                                    .frame(width: 80, height: 80)
-                                Circle()
-                                    .fill(capture.isRecording ? .red : .white)
-                                    .frame(width: 64, height: 64)
-                            }
-                        }
-                        .disabled(!capture.isRunning || analyzing)
-                    }
-                    .padding(.bottom, 32)
+                    bottomControls
                 }
 
                 if analyzing {
-                    Color.black.opacity(0.4).ignoresSafeArea()
-                    ProgressView("Analyzing swing…")
-                        .padding()
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Color.black.opacity(0.55).ignoresSafeArea()
+                    VStack(spacing: Theme.Spacing.m) {
+                        ProgressView().tint(.white).scaleEffect(1.4)
+                        Text("Analyzing swing…")
+                            .font(Theme.Type.bodyStrong)
+                            .foregroundStyle(.white)
+                    }
+                    .padding(Theme.Spacing.xl)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Radius.md)
+                            .fill(.ultraThinMaterial)
+                    )
                 }
             }
-            .navigationTitle("Swing")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 requestCameraPermissionIfNeeded()
                 capture.configure()
@@ -138,23 +69,162 @@ struct SwingCaptureView: View {
             .alert("Camera error", isPresented: .constant(capture.lastError != nil)) {
                 Button("OK") { capture.lastError = nil }
             } message: { Text(capture.lastError ?? "") }
-            .navigationDestination(isPresented: $showReview) {
-                SwingReviewView()
-            }
+            .navigationDestination(isPresented: $showReview) { SwingReviewView() }
         }
     }
 
-    /// Decides whether a fresh 2D capture should be held as the first
-    /// half of a face-on + down-the-line fusion, or analyzed immediately.
+    // MARK: - Controls
+
+    private var topBar: some View {
+        HStack(alignment: .center) {
+            clubMenu
+            Spacer()
+            handMenu
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.top, Theme.Spacing.m)
+    }
+
+    private var clubMenu: some View {
+        Menu {
+            ForEach(ClubKind.allCases, id: \.self) { k in
+                Button(k.rawValue.capitalized) { selectedClubKind = k; Haptics.selection() }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "target").font(.system(size: 13, weight: .semibold))
+                Text(selectedClubKind.rawValue.capitalized).font(Theme.Type.bodyStrong)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, Theme.Spacing.m)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(.ultraThinMaterial))
+        }
+    }
+
+    private var handMenu: some View {
+        Picker("Hand", selection: $state.preferredHandedness) {
+            Text("R").tag(Handedness.right)
+            Text("L").tag(Handedness.left)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 80)
+        .background(Capsule().fill(.ultraThinMaterial))
+    }
+
+    private var modePill: some View {
+        HStack(spacing: 0) {
+            modeButton("Face", .face2D)
+            modeButton("DTL", .dtl2D)
+            if SwingCaptureSession.supports3D {
+                modeButton("3D", .pose3D)
+            }
+        }
+        .padding(4)
+        .background(Capsule().fill(.ultraThinMaterial))
+        .padding(.top, Theme.Spacing.m)
+        .disabled(capture.isRecording || pendingFirstAngle != nil)
+    }
+
+    private func modeButton(_ label: String, _ mode: SwingCaptureMode) -> some View {
+        let active = capture.mode == mode
+        return Button {
+            capture.mode = mode; Haptics.selection()
+        } label: {
+            Text(label)
+                .font(Theme.Type.caption)
+                .foregroundStyle(active ? Theme.Palette.primary : .white)
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule().fill(active ? Color.white : Color.clear)
+                )
+        }
+    }
+
+    private var recordingChip: some View {
+        HStack(spacing: 8) {
+            Circle().fill(Theme.Palette.danger).frame(width: 9, height: 9)
+                .opacity(Double(Int(Date().timeIntervalSince1970 * 2) % 2))
+            Text("REC · \(capture.framesCollected) frames")
+                .font(Theme.Type.caption)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(.ultraThinMaterial))
+    }
+
+    private func pendingBanner(for pending: SwingCaptureResult) -> some View {
+        VStack(spacing: Theme.Spacing.s) {
+            Text(pendingPrompt(for: pending))
+                .font(Theme.Type.caption)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.vertical, Theme.Spacing.s)
+                .background(Capsule().fill(Theme.Palette.accent.opacity(0.85)))
+
+            HStack(spacing: Theme.Spacing.s) {
+                Button("Analyze this angle") {
+                    let first = pending
+                    pendingFirstAngle = nil
+                    Task { await analyze(first) }
+                }
+                .buttonStyle(.primaryPill(tint: .white, fullWidth: false))
+                .foregroundStyle(Theme.Palette.primary)
+                .disabled(analyzing || capture.isRecording)
+
+                Button("Cancel") { pendingFirstAngle = nil; Haptics.selection() }
+                    .buttonStyle(.secondaryPill(fullWidth: false))
+                    .disabled(analyzing || capture.isRecording)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+    }
+
+    private var bottomControls: some View {
+        VStack(spacing: Theme.Spacing.m) {
+            Button {
+                Haptics.tap()
+                if capture.isRecording {
+                    capture.stopRecording { result in
+                        Task { await handleCapture(result) }
+                    }
+                } else {
+                    capture.startRecording()
+                }
+            } label: {
+                ZStack {
+                    Circle()
+                        .strokeBorder(.white, lineWidth: 4)
+                        .frame(width: 86, height: 86)
+                    RoundedRectangle(cornerRadius: capture.isRecording ? 8 : 34, style: .continuous)
+                        .fill(capture.isRecording ? Theme.Palette.danger : .white)
+                        .frame(width: capture.isRecording ? 36 : 68,
+                               height: capture.isRecording ? 36 : 68)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: capture.isRecording)
+                }
+            }
+            .disabled(!capture.isRunning || analyzing)
+
+            Text(capture.isRecording ? "Tap to stop" : "Tap to record")
+                .font(Theme.Type.caption)
+                .foregroundStyle(.white.opacity(0.85))
+                .padding(.bottom, Theme.Spacing.l)
+        }
+    }
+
+    // MARK: - Decision flow (unchanged logic)
+
     private func handleCapture(_ result: SwingCaptureResult) async {
-        // 3D captures never need fusion.
         if case .threeD = result {
             await analyze(result)
             return
         }
         guard case let .twoD(mode, _) = result else { return }
 
-        // If we already have a capture from the *other* 2D angle, fuse.
         if let first = pendingFirstAngle,
            case let .twoD(firstMode, _) = first,
            firstMode != mode
@@ -164,7 +234,6 @@ struct SwingCaptureView: View {
             return
         }
 
-        // Otherwise: offer to record the complementary angle for fusion.
         if mode == .face2D || mode == .dtl2D {
             pendingFirstAngle = result
             capture.mode = (mode == .face2D) ? .dtl2D : .face2D
@@ -184,9 +253,10 @@ struct SwingCaptureView: View {
         analyzing = true
         defer { analyzing = false }
         guard let metrics = SwingAnalyzerFacade.analyze(
-            capture, handedness: handedness, clubKind: selectedClubKind
+            capture, handedness: state.preferredHandedness, clubKind: selectedClubKind
         ) else {
             self.capture.lastError = "Could not read a full swing. Frame yourself head-to-toe and try again."
+            Haptics.error()
             return
         }
         await postToCoach(metrics)
@@ -203,9 +273,10 @@ struct SwingCaptureView: View {
         }
         guard let metrics = SwingAnalyzerFacade.fuse(
             faceOn: fo, downTheLine: dtl,
-            handedness: handedness, clubKind: selectedClubKind
+            handedness: state.preferredHandedness, clubKind: selectedClubKind
         ) else {
             self.capture.lastError = "Neither capture was usable. Re-record and try again."
+            Haptics.error()
             return
         }
         await postToCoach(metrics)
@@ -216,11 +287,12 @@ struct SwingCaptureView: View {
         do {
             let report = try await state.api.coachSwing(metrics)
             state.lastSwingReport = report
+            Haptics.success()
             showReview = true
         } catch {
             state.lastSwingReport = nil
             capture.lastError = "Coach unavailable: \(error.localizedDescription)"
-            // Still let the user see local metrics.
+            Haptics.warning()
             showReview = true
         }
     }
