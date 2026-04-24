@@ -236,7 +236,7 @@ private struct BagPage: View {
             Spacer()
             VStack(alignment: .leading, spacing: Theme.Spacing.s) {
                 Text("You're set.").font(Theme.Type.title).foregroundStyle(.white)
-                Text("We've pre-loaded a standard 14-club bag. You can add, remove, and save your personal distances once we're in.")
+                Text("We've pre-loaded a standard starter bag. You can add, remove, and save your personal distances once we're in.")
                     .font(Theme.Type.body).foregroundStyle(.white.opacity(0.85))
             }
 

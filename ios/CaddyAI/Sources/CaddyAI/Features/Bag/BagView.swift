@@ -119,7 +119,7 @@ struct BagView: View {
             .buttonStyle(.primaryPill)
             .disabled(syncStatus == .syncing)
 
-            Button("Restore standard 14") {
+            Button("Restore standard bag") {
                 state.bag = .standard14
                 state.persist()
                 Haptics.selection()
